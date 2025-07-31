@@ -1,0 +1,169 @@
+format_version: 5
+
+environments:
+pipelines:
+  ConvApiDataSanitizerServiceDeployDev: 
+    group: Conversation 
+    label_template: "${ConvApiDataSanitizerService}"
+    lock_behavior: none
+    parameters:
+      NAMESPACE: dev
+    environment_variables:
+      HTTPS_PROXY: http://proxy.example.com:3128     
+    secure_variables:
+      AZURE_PAT: AES:xxxxyyyyzzzz
+      API_BEARER_TOKEN: AES:xxxxyyyyzzzz
+    materials:      
+      ConvApiDataSanitizerService:  
+        pipeline: ConvApiDataSanitizerService 
+        stage: build
+      deploy:
+        git: https://dev.azure.com/CompanyA/ProjectB/_git/k8s-app-deployment-templates
+        username: xxxxyyyyzzzz
+        encrypted_password: AES:xxxxyyyyzzzz
+        branch: master
+        whitelist:
+        - "templates/convapi-data-sanitizer/#{NAMESPACE}.yaml"
+        destination: deploy  
+      loadtest:
+        git: ssh://git@bitbucket.example.com:3000/capi/convapidatasanitizerserviceloadtests.git
+        branch: master
+        destination: loadtest  
+    stages:
+      - deployment:
+          clean_workspace: true
+          jobs:
+            deploy:
+              resources:
+                - AWS_CSS_MANAGEMENT          
+              tasks:
+                - exec:
+                     run_if: passed
+                     working_directory: deploy
+                     command: /bin/bash
+                     arguments:
+                       - -c
+                       - "scripts/deploy.sh convapi-data-sanitizer ${GO_PIPELINE_LABEL} none #{NAMESPACE} airnzdevops ${AZURE_PAT}"
+      - loadTest:
+          jobs:
+            deploy:
+              resources:
+                - AWS_CSS_MANAGEMENT        
+              tasks:
+                - exec:
+                    run_if: passed
+                    working_directory: loadtest
+                    command: ./gradlew
+                    arguments:
+                      - runLoadTest
+                      - -Dbase.url=https://api.dev.s.api-internal.example.com 
+                      - -Dmax.requests.per.second=1 
+                      - -Dtest.length.minutes=5 
+                      - -Dmax.resp.millis=10000 
+                      - -Dmax.50pc.resp.millis=1000 
+                      - -Dmax.95pc.resp.millis=3000
+
+  ConvApiDataSanitizerServiceDeployQual:
+    group: Conversation 
+    label_template: "${ConvApiDataSanitizerServiceDeployDev}"
+    lock_behavior: none
+    environment_variables:
+      HTTPS_PROXY: http://proxy.example.com:3128
+      CHANGE_MANAGEMENT_CONFIGURATION_ITEM_NAME: "Conversation Data Sanitizer API"
+    secure_variables:
+      AZURE_PAT: AES:xxxxyyyyzzzz
+      API_BEARER_TOKEN: AES:xxxxyyyyzzzz
+    parameters:
+      NAMESPACE: qual
+    materials:
+      ConvApiDataSanitizerServiceDeployDev:
+        pipeline: ConvApiDataSanitizerServiceDeployDev
+        stage: deployment
+      deploy:
+        git: https://dev.azure.com/CompanyA/ProjectB/_git/k8s-app-deployment-templates
+        username: xxxxyyyyzzzz
+        encrypted_password: AES:xxxxyyyyzzzz
+        branch: master
+        whitelist:
+        - "templates/convapi-data-sanitizer/#{NAMESPACE}.yaml"
+        destination: deploy
+      loadtest:
+        git: ssh://git@bitbucket.example.com:3000/capi/convapidatasanitizerserviceloadtests.git
+        branch: master
+        destination: loadtest
+    stages:
+      - deployment:
+          clean_workspace: true
+          jobs:
+            deploy:
+              approval:
+                type: manual
+              resources:
+                - AWS_CSS_MANAGEMENT
+              tasks:
+                - exec:
+                     run_if: passed
+                     working_directory: deploy
+                     command: /bin/bash
+                     arguments:
+                       - -c
+                       - "scripts/deploy.sh convapi-data-sanitizer ${GO_PIPELINE_LABEL} none #{NAMESPACE} airnzdevops ${AZURE_PAT}"
+      - loadTest:
+          jobs:
+            deploy:
+              resources:
+                - AWS_CSS_MANAGEMENT
+              tasks:
+                - exec:
+                    run_if: passed
+                    working_directory: loadtest
+                    command: ./gradlew
+                    arguments:
+                      - runLoadTest
+                      - -Dbase.url=https://api.qual.s.api-internal.example.com
+                      - -Dmax.requests.per.second=1
+                      - -Dtest.length.minutes=5
+                      - -Dmax.resp.millis=10000
+                      - -Dmax.50pc.resp.millis=1000
+                      - -Dmax.95pc.resp.millis=3000
+
+  ConvApiDataSanitizerServiceDeployProd:
+    group: Conversation
+    label_template: "${ConvApiDataSanitizerServiceDeployQual}"
+    lock_behavior: none
+    environment_variables:
+      HTTPS_PROXY: http://proxy.example.com:3128
+      CHANGE_MANAGEMENT_CONFIGURATION_ITEM_NAME: "Conversation Data Sanitizer API"
+    secure_variables:
+      AZURE_PAT: AES:xxxxyyyyzzzz
+    parameters:
+      NAMESPACE: prod
+    materials:      
+      ConvApiDataSanitizerServiceDeployQual:  
+        pipeline: ConvApiDataSanitizerServiceDeployQual
+        stage: deployment
+      deploy:
+        git: https://dev.azure.com/CompanyA/ProjectB/_git/k8s-app-deployment-templates
+        username: xxxxyyyyzzzz
+        encrypted_password: AES:xxxxyyyyzzzz
+        branch: master
+        whitelist:
+        - "templates/convapi-data-sanitizer/#{NAMESPACE}.yaml"
+        destination: deploy  
+    stages:
+      - deployment:
+          clean_workspace: true
+          jobs:
+            deploy:
+              approval:
+                type: manual
+              resources:
+                - AWS_CSS_MANAGEMENT 
+              tasks:
+                - exec:
+                     run_if: passed
+                     working_directory: deploy
+                     command: /bin/bash
+                     arguments:
+                       - -c
+                       - "scripts/deploy.sh convapi-data-sanitizer ${GO_PIPELINE_LABEL} none #{NAMESPACE} airnzdevops ${AZURE_PAT}"
